@@ -1,0 +1,97 @@
+---
+title: "Machine Learning Project"
+author: "Ryan"
+date: "8/28/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Executive Summary
+
+In this report we explore a classification model that predicts "how well" someone performed a barbell lift based on a series of measurements taken from fitness devices worn by test subjects. The output variable is one of [A, B, C, D, E] - A being the best and E being the worst.  A gradient boosting machines tree-based model was used to achieve 96.8% accuracy on the test dataset.  We expect the out of sample error rate to be between 96.3% and 97.2 (95% confidence interval). The GBM model was selected because we are not interested in interpretability and this is a commonly used classification model.
+
+# Details
+
+Load packages required to process and analyze the data and load the raw datasets.
+
+```{r message=FALSE}
+set.seed(3345)
+library(caret)
+library(ggplot2)
+library(dplyr)
+library(gbm)
+
+validation <- read.csv("pml-testing.csv")
+training_raw <- read.csv("pml-training.csv")
+```
+
+Some fields contain NAs or are otherwise not usable for training.  Remove these fields from the training data.
+
+```{r}
+training_raw <- training_raw[,colSums(is.na(training_raw))==0]
+cols_to_remove = c("X","raw_timestamp_part_1","raw_timestamp_part_2","cvtd_timestamp",
+                   "kurtosis_yaw_belt","skewness_yaw_belt","amplitude_yaw_belt",
+                   "kurtosis_yaw_dumbbell","skewness_yaw_dumbbell","amplitude_yaw_dumbbell",
+                   "kurtosis_yaw_forearm","skewness_yaw_forearm","amplitude_yaw_forearm",
+                   "num_window","new_window","user_name","kurtosis_roll_belt",
+                   "kurtosis_picth_belt","skewness_roll_belt","skewness_roll_belt.1",
+                   "max_yaw_belt","min_yaw_belt","kurtosis_roll_arm","kurtosis_picth_arm",
+                   "kurtosis_yaw_arm","skewness_roll_arm","skewness_pitch_arm",
+                   "skewness_yaw_arm","kurtosis_roll_dumbbell","kurtosis_picth_dumbbell",
+                   "skewness_roll_dumbbell","skewness_pitch_dumbbell","max_yaw_dumbbell",
+                   "min_yaw_dumbbell","kurtosis_roll_forearm","kurtosis_picth_forearm",
+                   "skewness_roll_forearm","skewness_pitch_forearm","max_yaw_forearm",
+                   "min_yaw_forearm")
+training_raw <- training_raw[,!colnames(training_raw) %in% cols_to_remove]
+rm(cols_to_remove)
+```
+
+Split the training data into two datasets: training and testing for cross-validation.
+
+```{r}
+inTrain <- createDataPartition(y=training_raw$classe,p=0.7,list=FALSE)
+training <- training_raw[inTrain,]
+testing <- training_raw[-inTrain,]
+rm(training_raw,inTrain)
+```
+
+```{r  results="hide"}
+model <- train(classe~.,data=training,method="gbm")
+```
+
+Test the model on the subset of data that was held out for cross-validation and summarize with a confusion matrix.
+
+```{r}
+model_test_predictions <- predict(model,newdata=testing)
+confusionMatrix(model_test_predictions,testing$classe)
+```
+
+The list of the top 20 most important variables used by the GBM model is shown below.
+
+```{r}
+varImp(model)
+```
+
+The 3 by 3 plot after this shows a series of scatter charts colored by the classe variable showing the relationships between the first few most important features from the model.  Visual inspection from the charts shows that the values of classe appear to be clustered in these charts in a way that makes sense given they were selected as the most important variables by the model.
+
+```{r fig.width=10, fig.height=8}
+g1 <- ggplot(training,aes(roll_belt,yaw_belt,col=classe)) + geom_point()
+g2 <- ggplot(training,aes(roll_belt,magnet_dumbbell_z,col=classe)) + geom_point()
+g3 <- ggplot(training,aes(roll_belt,pitch_forearm,col=classe)) + geom_point()
+g4 <- ggplot(training,aes(yaw_belt,magnet_dumbbell_z,col=classe)) + geom_point()
+g5 <- ggplot(training,aes(yaw_belt,pitch_forearm,col=classe)) + geom_point()
+g6 <- ggplot(training,aes(yaw_belt,magnet_dumbbell_y,col=classe)) + geom_point()
+g7 <- ggplot(training,aes(magnet_dumbbell_z,pitch_forearm,col=classe)) + geom_point()
+g8 <- ggplot(training,aes(magnet_dumbbell_z,magnet_dumbbell_y,col=classe)) + geom_point()
+g9 <- ggplot(training,aes(magnet_dumbbell_z,roll_forearm,col=classe)) + geom_point()
+grid.arrange(g1,g2,g3,g4,g5,g6,g7,g8,g9,nrow=3)
+```
+
+Run the model on the 20 validation records.
+
+```{r}
+predict(model,newdata=validation)
+```
